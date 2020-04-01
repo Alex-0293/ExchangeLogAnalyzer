@@ -273,7 +273,7 @@ $ActiveSyncLog   += (GetLogFilesDividedByDates @Params) |  Select-Object *, @{na
 
 if (@($ActiveSyncLog).count -gt 0){
     Write-host "Saving logs"
-    $ActiveSyncLog |select-Object * | export-csv -Path $Global:ActiveSyncLogFilePath -Encoding UTF8 
+    $ActiveSyncLog |select-Object * | export-csv -Path $Global:ActiveSyncLogFilePath -Encoding UTF8 -NoTypeInformation
     CollectUniqIP $ActiveSyncLog "c-ip"
     $ActiveSyncLog = ""
 }    
