@@ -6,11 +6,18 @@
     PSVer:       4.0
     Author:     AlexK
 #>
-Import-Module AlexkUtils
+$ImportResult = Import-Module AlexkUtils  -PassThru
+if ($null -eq $ImportResult) {
+    Write-Host "Module 'AlexkUtils' does not loaded!"
+    exit 1
+}
+else {
+    $ImportResult = $null
+}
 #requires -version 3
 
 #########################################################################
-function Get-Workdir () {
+function Get-WorkDir () {
     if ($PSScriptRoot -eq "") {
         if ($PWD -ne "") {
             $MyScriptRoot = $PWD
@@ -152,11 +159,11 @@ function OpenArrays($PSO,$Arraylist) {
 
 Clear-Host
 
-[string]$MyScriptRoot = Get-Workdir
+[string]$MyScriptRoot = Get-WorkDir
 [string]$Global:MyScriptRoot = $MyScriptRoot
 
-Get-Vars    "$MyScriptRoot\Vars.ps1"
-InitLogging $MyScriptRoot "Latest"
+Get-VarsFromFile    "$MyScriptRoot\Vars.ps1"
+Initialize-Logging $MyScriptRoot "Latest"
 
 [array]$Global:ColList = @()
 [array]$Global:AgentLogs1    = @()
@@ -210,4 +217,4 @@ foreach ($Log in $MessagesLog) {
 $Global:AgentLogs1 | export-csv -Path $Global:AgentLogFilePath1 -Encoding UTF8 -NoTypeInformation
 $Global:MessagesLog1 | export-csv -Path $Global:MessageLogFilePath1 -Encoding UTF8 -NoTypeInformation
 $Global:FilterConfig1 | export-csv -Path $Global:FilterConfigPath1 -Encoding UTF8 -NoTypeInformation
-write-host "Complited!"
+write-host "Completed!"

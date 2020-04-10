@@ -2,3 +2,4 @@ Errors.log
 Exchange.pbix
 vars.ps1
 DATA/*
+ExchangeLogAnalyzer.pbix

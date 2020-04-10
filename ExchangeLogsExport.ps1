@@ -6,11 +6,18 @@
     PSVer:       4.0
     Author:     AlexK
 #>
-Import-Module AlexkUtils
+$ImportResult = Import-Module AlexkUtils  -PassThru
+if ($null -eq $ImportResult) {
+    Write-Host "Module 'AlexkUtils' does not loaded!"
+    exit 1
+}
+else {
+    $ImportResult = $null
+}
 #requires -version 3
 
 #########################################################################
-function Get-Workdir () {
+function Get-WorkDir () {
     if ($PSScriptRoot -eq "") {
         if ($PWD -ne "") {
             $MyScriptRoot = $PWD
@@ -216,55 +223,105 @@ Function GetLogFilesDividedByDates($ExcludeIp,  $FileSplitHour, $ActiveSyncLogFi
     }
     return $ActiveSyncLogRes
 }
-Function CollectUniqIP ($PSO, $IPColName){
-    foreach($item in $PSO){
-        [string]  $Ip       = $Item."$IPColName"
-        [datetime]$lastSeen = get-date
-        if(($Global:IPArray.Ip -notcontains $Ip)  -and ($Ip -ne "") -and ($null -ne $Ip)){
-            #-and ($Ip -notlike "*:*")
-            #$ErrorActionPreference = "SilentlyContinue"
-            try {
-               $FQDN = [System.Net.Dns]::GetHostEntry($Ip).HostName 
-            }
-            catch { 
-                $Err = $Error[0].Exception.Message
-                if ($Err -match "Этот хост неизвестен") {
-                   $FQDN = "Unknown"
-                }
-                Elseif ( $Err -match "Обычно - это временная ошибка") {
-                   $FQDN = "Timeout"
-                }
-                Else {$FQDN = "Error"}            
-            }
+# Function CollectUniqIP ($PSO, $IPColName){
+#     foreach($item in $PSO){
+#         [string]  $Ip       = $Item."$IPColName"
+#         [datetime]$lastSeen = get-date
+#         if(($Global:IPArray.Ip -notcontains $Ip)  -and ($Ip -ne "") -and ($null -ne $Ip)){
+#             #-and ($Ip -notlike "*:*")
+#             #$ErrorActionPreference = "SilentlyContinue"
+#             try {
+#                $FQDN = [System.Net.Dns]::GetHostEntry($Ip).HostName 
+#             }
+#             catch { 
+#                 $Err = $Error[0].Exception.Message
+#                 if ($Err -match "Этот хост неизвестен") {
+#                    $FQDN = "Unknown"
+#                 }
+#                 Elseif ( $Err -match "Обычно - это временная ошибка") {
+#                    $FQDN = "Timeout"
+#                 }
+#                 Else {$FQDN = "Error"}            
+#             }
                         
-            #$ErrorActionPreference = "Continue"
-            Write-Host $IP  $FQDN
-            $data1 =  [PSCustomObject]@{
-                IP       = $Ip
-                FQDN     = $FQDN
-                LastSeen = $LastSeen
+#             #$ErrorActionPreference = "Continue"
+#             Write-Host $IP  $FQDN
+#             $data1 =  [PSCustomObject]@{
+#                 IP       = $Ip
+#                 FQDN     = $FQDN
+#                 LastSeen = $LastSeen
+#             }
+#             $Global:IPArray += $data1
+#             $FQDN    = ""
+#         } 
+#     }
+# }
+function Update-CSVReferenceFile {
+    <#
+    .SYNOPSIS 
+        .AUTHOR Alexk
+        .DATE 10.04.2020
+        .VER 1   
+    .DESCRIPTION
+     Update csv reference file with new data from array columns.
+    .EXAMPLE
+    Update-CSVReferenceFile -CSVFilePath "c:\1.csv" -Array $Array 
+    #>    
+    [CmdletBinding()]   
+    Param(
+        [Parameter( Mandatory = $true, Position = 0, HelpMessage = "Reference CSV file path." )]
+        [ValidateNotNullOrEmpty()]
+        [string] $CSVFilePath,
+        [Parameter( Mandatory = $true, Position = 1, HelpMessage = "Data array." )]
+        [ValidateNotNullOrEmpty()]
+        [array] $Array
+    )
+
+    if (Test-Path $CSVFilePath) {
+        $CSVFile = Import-Csv -Path $CSVFilePath -Encoding UTF8
+        $Changes = $false
+        foreach ($Item in $CSVFile) {
+            foreach ($Item1 in $Array) {
+                if ($Item.Ip -eq $Item1.Ip) {
+                    if ($Item1.FQDN.contains(".") -or (!$Item.FQDN.contains("."))) {
+                        $Item.FQDN = $item1.FQDN
+                        $Item.LastSeen = $item1.LastSeen
+                        $Item.Host = $item1.Host
+                        $Item.Domen = $item1.Domen
+                        $Changes = $true
+                    }
+                }
             }
-            $Global:IPArray += $data1
-            $FQDN    = ""
-        } 
+        }
+        foreach ($item1 in $Array) {
+            if ($CSVFile.Ip -notcontains $item1.IP) {
+                $CSVFile += $item1
+                $Changes = $true
+                Write-Host  "Add unique ip $item1"              
+            }
+        }
+        if ($Changes) {
+            $CSVFile | Sort-Object "Ip" | Export-Csv -Path $CSVFilePath -Encoding UTF8 -NoTypeInformation
+        }  
+    }
+    else {
+        #Write-Host "Reference CSV file path [$CSVFilePath] not found!" -ForegroundColor Red   
+        $Array | Sort-Object "Ip" | Export-Csv -Path $CSVFilePath -Encoding UTF8 -NoTypeInformation
     }
 }
-
 Clear-Host
 
-[string]$MyScriptRoot        = Get-Workdir
+[string]$MyScriptRoot        = Get-WorkDir
 [string]$Global:MyScriptRoot = $MyScriptRoot
 
-Get-Vars    "$MyScriptRoot\Vars.ps1"
-InitLogging $MyScriptRoot "Latest"
-
-
+Get-VarsFromFile    "$MyScriptRoot\Vars.ps1"
+Initialize-Logging $MyScriptRoot "Latest"
 
 [array]$Global:ColList     = @()
 [array]$Global:ColListData = @()
 [array]$Global:IPArray     = @()
 [array]$ActiveSyncLog      = @()
-
+[array]$UniqueIP           = @()
 
 Get-Item ($MyScriptRoot + "\data\Filters\*.*") | Remove-Item -force
 $Params           = $global:Params
@@ -274,12 +331,13 @@ $ActiveSyncLog   += (GetLogFilesDividedByDates @Params) |  Select-Object *, @{na
 if (@($ActiveSyncLog).count -gt 0){
     Write-host "Saving logs"
     $ActiveSyncLog |select-Object * | export-csv -Path $Global:ActiveSyncLogFilePath -Encoding UTF8 -NoTypeInformation
-    CollectUniqIP $ActiveSyncLog "c-ip"
+    $UniqueIP = $Messages | Select-Object "c-ip"
+    #CollectUniqIP $ActiveSyncLog "c-ip"
     $ActiveSyncLog = ""
 }    
 
-$Login          = Get-VarFromFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Login
-$Pass           = ConvertTo-SecureString -String (Get-VarFromFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Pass) -AsPlainText -Force
+$Login          = Get-VarToString(Get-VarFromAESFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Login)
+$Pass           = Get-VarFromAESFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Pass
 $UserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Login, $Pass
 $Session        = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "http://$($Global:ExchangeServerFQDN)/PowerShell/" -Authentication Kerberos -Credential $UserCredential   # -SessionOption (New-PSSessionOption -SkipCNCheck)
 Import-PSSession $Session -AllowClobber
@@ -287,13 +345,15 @@ Import-PSSession $Session -AllowClobber
 $Data1    = (get-date).AddHours(-1 * $Global:HoursToLoad)
 $Messages = Get-MessageTrackingLog -Start $Data1 -ResultSize $Global:MaxResultSize
 $Messages | Select-Object * | export-csv -Path $Global:MessageLogFilePath -Encoding UTF8
-CollectUniqIP $Messages "ClientIp"
+$UniqueIP += $Messages | Select-Object "ClientIp"
+#CollectUniqIP $Messages "ClientIp"
 $Messages = ""
 
 $AgentLogs  = Get-AgentLog -Start $Data1
 $AgentLogs += Get-agentlog  -location $Global:ConnectionFilterLogLocation -StartDate $Data1 #Add connection filter
 $AgentLogs | Select-Object * | export-csv -Path $Global:AgentLogFilePath -Encoding UTF8
-CollectUniqIP $AgentLogs "OriginalClientIp"
+$UniqueIP += $Messages | Select-Object "OriginalClientIp"
+#CollectUniqIP $AgentLogs "OriginalClientIp"
 $AgentLogs = ""
 $HashData = @()
 
@@ -382,37 +442,41 @@ $AllData | Select-Object * | Export-Clixml $Global:FilterConfig
 $Filter  = ExportData $AllData
 $Filter | Select-Object Name, Col, Enabled, Action, Data  | export-csv -Path $Global:FilterConfigPath1 -Encoding UTF8 -NoTypeInformation
 $Filter = ""
-if (Test-Path $global:IPArrayPath){
-    $IPs = Import-Csv -Path $global:IPArrayPath -Encoding UTF8
-    $Changes = $false
-    foreach($Item in $IPs){
-        foreach ($item1 in $Global:IPArray){
-            if ($item.IP -eq $Item1.IP){
-                    if ($item1.FQDN.contains(".")){
-                        $item.FQDN     = $item1.FQDN
-                        $item.LastSeen = $item1.LastSeen
-                        $Changes       = $true
-                    }
-            }
-        }
-    }
-    foreach ($item1 in $Global:IPArray){
-        if ($IPs.Ip -notcontains $item1.IP) {
-              $IPs     += $item1
-              $Changes  = $true
-              write-host  "Add uniq ip $item1"              
-        }
-    }
-    if ($Changes){
-        $IPs | Export-Csv -Path $global:IPArrayPath -Encoding UTF8 -NoTypeInformation
-    }
 
-}
-else{
-   $Global:IPArray | Export-Csv -Path $global:IPArrayPath -Encoding UTF8 -NoTypeInformation
-}
+$UniqueIP = Get-UniqueArrayMembers -Array $UniqueIP -ColumnName "ClientIp"
+$UniqueIP = Resolve-IPtoFQDNinArray $UniqueIP 
+Update-CSVReferenceFile -CSVFilePath $global:IPToFQDN -Array $UniqueIP
+# if (Test-Path $global:IPToFQDN){
+#     $IPs = Import-Csv -Path $global:IPToFQDN -Encoding UTF8
+#     $Changes = $false
+#     foreach($Item in $IPs){
+#         foreach ($item1 in $Global:IPArray){
+#             if ($item.IP -eq $Item1.IP){
+#                     if ($item1.FQDN.contains(".")){
+#                         $item.FQDN     = $item1.FQDN
+#                         $item.LastSeen = $item1.LastSeen
+#                         $Changes       = $true
+#                     }
+#             }
+#         }
+#     }
+#     foreach ($item1 in $Global:IPArray){
+#         if ($IPs.Ip -notcontains $item1.IP) {
+#               $IPs     += $item1
+#               $Changes  = $true
+#               write-host  "Add uniq ip $item1"              
+#         }
+#     }
+#     if ($Changes){
+#         $IPs | Export-Csv -Path $global:IPToFQDN -Encoding UTF8 -NoTypeInformation
+#     }
 
-$Global:IPArray = ""
+# }
+# else{
+#    $Global:IPArray | Export-Csv -Path $global:IPToFQDN -Encoding UTF8 -NoTypeInformation
+# }
+
+#$Global:IPArray = ""
 
 Remove-PSSession -Session $Session
-"Export complited!"
+"Export completed!"
