@@ -3,3 +3,5 @@ Exchange.pbix
 vars.ps1
 DATA/*
 ExchangeLogAnalyzer.pbix
+ACL/RoleAdministrator.csv
+ACL/RoleOperator.csv
