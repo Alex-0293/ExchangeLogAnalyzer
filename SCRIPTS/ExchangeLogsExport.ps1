@@ -72,7 +72,7 @@ function Format-PSO($Filter) {
                         $Col = $item1
                     } 
                 }
-                $ExpCSVFilePath = $Global:MyScriptRoot + "\data\Filters\" + $Name + "." + $Col + ".csv"
+                $ExpCSVFilePath = $Global:ProjectRoot + "\data\Filters\" + $Name + "." + $Col + ".csv"
                 write-host $ExpCSVFilePath
                 $Array | export-csv -Path $ExpCSVFilePath -Encoding UTF8 -NoTypeInformation -Append
             }
@@ -85,7 +85,7 @@ function Format-PSO($Filter) {
 
     }
     $Cols = $Res | Get-Member -MemberType NoteProperty | Select-Object -ExpandProperty Name
-    $ExpCSVFilePath = $Global:MyScriptRoot + "\data\Filters\" + $Name  + ".csv"
+    $ExpCSVFilePath = $Global:ProjectRoot + "\data\Filters\" + $Name + ".csv"
     write-host $ExpCSVFilePath
     $Res | export-csv -Path $ExpCSVFilePath -Encoding UTF8 -NoTypeInformation -Append
     Return $Res
@@ -312,10 +312,10 @@ function Update-CSVReferenceFile {
 Clear-Host
 
 [string]$MyScriptRoot        = Get-WorkDir
-[string]$Global:MyScriptRoot = $MyScriptRoot
+[string]$Global:ProjectRoot  = Split-Path $MyScriptRoot -parent
 
-Get-VarsFromFile    "$MyScriptRoot\Vars.ps1"
-Initialize-Logging $MyScriptRoot "Latest"
+Get-VarsFromFile    "$ProjectRoot\VARS\Vars.ps1"
+Initialize-Logging   $ProjectRoot  "Latest"
 
 [array]$Global:ColList     = @()
 [array]$Global:ColListData = @()
@@ -323,8 +323,8 @@ Initialize-Logging $MyScriptRoot "Latest"
 [array]$ActiveSyncLog      = @()
 [array]$UniqueIP           = @()
 
-Get-Item ($MyScriptRoot + "\data\Filters\*.*") | Remove-Item -force
-$Params           = $global:Params
+Get-Item ($ProjectRoot + "\data\Filters\*.*") | Remove-Item -force
+$Params           = $global:LogParams
 [datetime]$Data1  = (get-date).AddHours(-1 * $Global:HoursToLoad)
 $ActiveSyncLog   += (GetLogFilesDividedByDates @Params) |  Select-Object *, @{name="DateTime";e={[datetime]([string]$_.date + " " + [string]$_.time)}}| Where-Object {$_.DateTime -ge $Data1 -and $Params.ExcludeIP -notcontains $_."s-ip"}
 

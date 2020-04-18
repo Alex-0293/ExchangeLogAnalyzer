@@ -159,11 +159,12 @@ function OpenArrays($PSO,$Arraylist) {
 
 Clear-Host
 
-[string]$MyScriptRoot = Get-WorkDir
+[string]$MyScriptRoot        = Get-WorkDir
+[string]$ProjectRoot         = Split-Path $MyScriptRoot -parent
 [string]$Global:MyScriptRoot = $MyScriptRoot
 
-Get-VarsFromFile    "$MyScriptRoot\Vars.ps1"
-Initialize-Logging $MyScriptRoot "Latest"
+Get-VarsFromFile    "$ProjectRoot\VARS\Vars.ps1"
+Initialize-Logging   $ProjectRoot  "Latest"
 
 [array]$Global:ColList = @()
 [array]$Global:AgentLogs1    = @()
