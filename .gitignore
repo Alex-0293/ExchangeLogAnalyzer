@@ -25,3 +25,4 @@ DATA/Filters/SenderReputation.csv
 LOGS/Errors.log
 SETTINGS/Settings.ps1
 ExchangeLogAnalyzer.pbix
+ACL/Access.csv
