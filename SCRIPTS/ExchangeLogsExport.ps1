@@ -311,11 +311,12 @@ function Update-CSVReferenceFile {
 }
 Clear-Host
 
-[string]$MyScriptRoot        = Get-WorkDir
-[string]$Global:ProjectRoot  = Split-Path $MyScriptRoot -parent
+[string]$Global:MyScriptRoot       = Get-WorkDir
+[string]$Global:GlobalSettingsPath = "C:\DATA\Projects\GlobalSettings\SETTINGS\Settings.ps1"
 
-Get-VarsFromFile    "$ProjectRoot\VARS\Vars.ps1"
-Initialize-Logging   $ProjectRoot  "Latest"
+Get-SettingsFromFile -SettingsFile $Global:GlobalSettingsPath
+Get-SettingsFromFile -SettingsFile "$ProjectRoot\$SETTINGSFolder\Settings.ps1"
+Initialize-Logging   "$ProjectRoot\$LOGSFolder\$ErrorsLogFileName" "Latest"
 
 [array]$Global:ColList     = @()
 [array]$Global:ColListData = @()
@@ -336,9 +337,9 @@ if (@($ActiveSyncLog).count -gt 0){
     $ActiveSyncLog = ""
 }    
 
-$Login          = Get-VarToString(Get-VarFromAESFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Login)
+$Login          = Get-VarFromAESFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Login
 $Pass           = Get-VarFromAESFile $Global:GlobalKey1 $Global:APP_SCRIPT_ADMIN_Pass
-$UserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $Login, $Pass
+$UserCredential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList (Get-VarToString $Login), $Pass
 $Session        = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "http://$($Global:ExchangeServerFQDN)/PowerShell/" -Authentication Kerberos -Credential $UserCredential   # -SessionOption (New-PSSessionOption -SkipCNCheck)
 Import-PSSession $Session -AllowClobber
 
