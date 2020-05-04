@@ -1,63 +1,28 @@
 ﻿<#
-    Name:       Список пользователей домена с указанием IP при удаленном доступе, праве удаленного доступа и состояния пароля
-    Ver:           1.0
-    Date:         25.10.2017
-    Platform:  Windows server 2012
-    PSVer:       4.0
-    Author:     AlexK
+    .SYNOPSIS 
+        .AUTOR
+        .DATE
+        .VER
+    .DESCRIPTION
+    .PARAMETER
+    .EXAMPLE
 #>
-$ImportResult = Import-Module AlexkUtils  -PassThru
-if ($null -eq $ImportResult) {
-    Write-Host "Module 'AlexkUtils' does not loaded!"
-    exit 1
-}
-else {
-    $ImportResult = $null
-}
-#requires -version 3
+$MyScriptRoot = "C:\DATA\Projects\ExchangeLogAnalyzer\SCRIPTS"
+$InitScript   = "C:\DATA\Projects\GlobalSettings\SCRIPTS\Init.ps1"
 
-#########################################################################
-function Get-WorkDir () {
-    if ($PSScriptRoot -eq "") {
-        if ($PWD -ne "") {
-            $MyScriptRoot = $PWD
-        }        
-        else {
-            Write-Host "Where i am? What is my work dir?"
-        }
-    }
-    else {
-        $MyScriptRoot = $PSScriptRoot
-    }
-    return $MyScriptRoot
-}
-Function Initialize-Script   () {
-    [string]$Global:MyScriptRoot = Get-WorkDir
-    [string]$Global:GlobalSettingsPath = "C:\DATA\Projects\GlobalSettings\SETTINGS\Settings.ps1"
-
-    Get-SettingsFromFile -SettingsFile $Global:GlobalSettingsPath
-    if ($GlobalSettingsSuccessfullyLoaded) {    
-        Get-SettingsFromFile -SettingsFile "$ProjectRoot\$($Global:SETTINGSFolder)\Settings.ps1"
-        if ($Global:LocalSettingsSuccessfullyLoaded) {
-            Initialize-Logging   "$ProjectRoot\$LOGSFolder\$ErrorsLogFileName" "Latest"
-            Write-Host "Logging initialized."            
-        }
-        Else {
-            Add-ToLog -Message "[Error] Error loading local settings!" -logFilePath "$(Split-Path -path $Global:MyScriptRoot -parent)\$LOGSFolder\$ErrorsLogFileName" -Display -Status "Error" -Format 'yyyy-MM-dd HH:mm:ss'
-            Exit 1 
-        }
-    }
-    Else { 
-        Add-ToLog -Message "[Error] Error loading global settings!" -logFilePath "$(Split-Path -path $Global:MyScriptRoot -parent)\LOGS\Errors.log" -Display -Status "Error" -Format 'yyyy-MM-dd HH:mm:ss'
-        Exit 1
-    }
-}
+. "$InitScript" -MyScriptRoot $MyScriptRoot
 # Error trap
 trap {
-    Get-ErrorReporting $_    
+    if ($Global:Logger) {
+        Get-ErrorReporting $_ 
+    }
+    Else {
+        Write-Host "There is error before logging initialized." -ForegroundColor Red
+    }   
     exit 1
 }
-#########################################################################
+################################# Script start here #################################
+Clear-Host
 function Format-PSO($Filter) {
      
     $Res = @()
@@ -244,39 +209,6 @@ Function GetLogFilesDividedByDates($ExcludeIp,  $FileSplitHour, $ActiveSyncLogFi
     }
     return $ActiveSyncLogRes
 }
-# Function CollectUniqIP ($PSO, $IPColName){
-#     foreach($item in $PSO){
-#         [string]  $Ip       = $Item."$IPColName"
-#         [datetime]$lastSeen = get-date
-#         if(($Global:IPArray.Ip -notcontains $Ip)  -and ($Ip -ne "") -and ($null -ne $Ip)){
-#             #-and ($Ip -notlike "*:*")
-#             #$ErrorActionPreference = "SilentlyContinue"
-#             try {
-#                $FQDN = [System.Net.Dns]::GetHostEntry($Ip).HostName 
-#             }
-#             catch { 
-#                 $Err = $Error[0].Exception.Message
-#                 if ($Err -match "Этот хост неизвестен") {
-#                    $FQDN = "Unknown"
-#                 }
-#                 Elseif ( $Err -match "Обычно - это временная ошибка") {
-#                    $FQDN = "Timeout"
-#                 }
-#                 Else {$FQDN = "Error"}            
-#             }
-                        
-#             #$ErrorActionPreference = "Continue"
-#             Write-Host $IP  $FQDN
-#             $data1 =  [PSCustomObject]@{
-#                 IP       = $Ip
-#                 FQDN     = $FQDN
-#                 LastSeen = $LastSeen
-#             }
-#             $Global:IPArray += $data1
-#             $FQDN    = ""
-#         } 
-#     }
-# }
 function Update-CSVReferenceFile {
     <#
     .SYNOPSIS 
@@ -330,8 +262,6 @@ function Update-CSVReferenceFile {
         $Array | Sort-Object "Ip" | Export-Csv -Path $CSVFilePath -Encoding UTF8 -NoTypeInformation
     }
 }
-Clear-Host
-Initialize-Script
 
 [array]$Global:ColList     = @()
 [array]$Global:ColListData = @()
@@ -347,7 +277,7 @@ $ActiveSyncLog   += (GetLogFilesDividedByDates @Params) |  Select-Object *, @{na
 if (@($ActiveSyncLog).count -gt 0){
     Write-host "Saving logs"
     $ActiveSyncLog |select-Object * | export-csv -Path $Global:ActiveSyncLogFilePath -Encoding UTF8 -NoTypeInformation
-    $UniqueIP = $Messages | Select-Object "c-ip"
+    $UniqueIP = $ActiveSyncLog | Select-Object  @{name="IP";e={$_."c-ip"}} -Unique
     #CollectUniqIP $ActiveSyncLog "c-ip"
     $ActiveSyncLog = ""
 }    
@@ -361,14 +291,14 @@ Import-PSSession $Session -AllowClobber
 $Data1    = (get-date).AddHours(-1 * $Global:HoursToLoad)
 $Messages = Get-MessageTrackingLog -Start $Data1 -ResultSize $Global:MaxResultSize
 $Messages | Select-Object * | export-csv -Path $Global:MessageLogFilePath -Encoding UTF8
-$UniqueIP += $Messages | Select-Object "ClientIp"
+$UniqueIP += $Messages | Select-Object  @{name="IP";e={$_.ClientIp}} -Unique
 #CollectUniqIP $Messages "ClientIp"
 $Messages = ""
 
 $AgentLogs  = Get-AgentLog -Start $Data1
 $AgentLogs += Get-agentlog  -location $Global:ConnectionFilterLogLocation -StartDate $Data1 #Add connection filter
 $AgentLogs | Select-Object * | export-csv -Path $Global:AgentLogFilePath -Encoding UTF8
-$UniqueIP += $Messages | Select-Object "OriginalClientIp"
+$UniqueIP += $AgentLogs | Select-Object @{name="IP";e={$_.OriginalClientIp}} -Unique
 #CollectUniqIP $AgentLogs "OriginalClientIp"
 $AgentLogs = ""
 $HashData = @()
@@ -459,40 +389,12 @@ $Filter  = ExportData $AllData
 $Filter | Select-Object Name, Col, Enabled, Action, Data  | export-csv -Path $Global:FilterConfigPath1 -Encoding UTF8 -NoTypeInformation
 $Filter = ""
 
-$UniqueIP = Get-UniqueArrayMembers -Array $UniqueIP -ColumnName "ClientIp"
+$UniqueIP = Get-UniqueArrayMembers -Array $UniqueIP -ColumnName "IP"
 $UniqueIP = Resolve-IPtoFQDNinArray $UniqueIP 
 Update-CSVReferenceFile -CSVFilePath $global:IPToFQDN -Array $UniqueIP
-# if (Test-Path $global:IPToFQDN){
-#     $IPs = Import-Csv -Path $global:IPToFQDN -Encoding UTF8
-#     $Changes = $false
-#     foreach($Item in $IPs){
-#         foreach ($item1 in $Global:IPArray){
-#             if ($item.IP -eq $Item1.IP){
-#                     if ($item1.FQDN.contains(".")){
-#                         $item.FQDN     = $item1.FQDN
-#                         $item.LastSeen = $item1.LastSeen
-#                         $Changes       = $true
-#                     }
-#             }
-#         }
-#     }
-#     foreach ($item1 in $Global:IPArray){
-#         if ($IPs.Ip -notcontains $item1.IP) {
-#               $IPs     += $item1
-#               $Changes  = $true
-#               write-host  "Add uniq ip $item1"              
-#         }
-#     }
-#     if ($Changes){
-#         $IPs | Export-Csv -Path $global:IPToFQDN -Encoding UTF8 -NoTypeInformation
-#     }
-
-# }
-# else{
-#    $Global:IPArray | Export-Csv -Path $global:IPToFQDN -Encoding UTF8 -NoTypeInformation
-# }
-
-#$Global:IPArray = ""
 
 Remove-PSSession -Session $Session
 "Export completed!"
+
+################################# Script end here ###################################
+. "$GlobalSettings\$SCRIPTSFolder\Finish.ps1"
