@@ -7,14 +7,15 @@
     .PARAMETER
     .EXAMPLE
 #>
-$MyScriptRoot = "C:\DATA\Projects\ExchangeLogAnalyzer\SCRIPTS"
-$InitScript   = "C:\DATA\Projects\GlobalSettings\SCRIPTS\Init.ps1"
-
-. "$InitScript" -MyScriptRoot $MyScriptRoot
+Clear-Host
+$Global:ScriptName = $MyInvocation.MyCommand.Name
+$InitScript        = "C:\DATA\Projects\GlobalSettings\SCRIPTS\Init.ps1"
+if (. "$InitScript" -MyScriptRoot (Split-Path $PSCommandPath -Parent)) { exit 1 }
 # Error trap
 trap {
     if ($Global:Logger) {
-        Get-ErrorReporting $_ 
+       Get-ErrorReporting $_
+        . "$GlobalSettings\$SCRIPTSFolder\Finish.ps1"  
     }
     Else {
         Write-Host "There is error before logging initialized." -ForegroundColor Red
@@ -196,9 +197,9 @@ Function GetLogFilesDividedByDates($ExcludeIp,  $FileSplitHour, $ActiveSyncLogFi
     
     for ($i=0;$i -ge ($DaysCount-1)*(-1);$i--){
         $DateYYMMdd = get-date -date $Now.AddDays($i) -Format yyMMdd
-        Write-host "Analyzing logs " $(get-date -date $Now.AddDays($i) -Format dd.MM.yyyy)
+        Add-ToLog -Message "Analyzing logs  [$(Get-Date -date $Now.AddDays($i) -Format dd.MM.yyyy)]." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
         $ActiveSyncLogFilePath = $ActiveSyncLogFilePathTemp -replace "%DateYYMMdd%", $DateYYMMdd  
-             Write-host "    - $LogName"
+             Add-ToLog -Message "Processing  [$LogName]." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
         if (Test-Path $ActiveSyncLogFilePath){
             $LogFile = Get-Content $ActiveSyncLogFilePath  | Select-Object -skip ($SkipLinesCount - 1)
             $Header = $LogFile | select-Object -first 1
@@ -250,7 +251,7 @@ function Update-CSVReferenceFile {
             if ($CSVFile.Ip -notcontains $item1.IP) {
                 $CSVFile += $item1
                 $Changes = $true
-                Write-Host  "Add unique ip $item1"              
+                Add-ToLog -Message "Add unique ip [$item1]." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)              
             }
         }
         if ($Changes) {
@@ -275,7 +276,7 @@ $Params           = $global:LogParams
 $ActiveSyncLog   += (GetLogFilesDividedByDates @Params) |  Select-Object *, @{name="DateTime";e={[datetime]([string]$_.date + " " + [string]$_.time)}}| Where-Object {$_.DateTime -ge $Data1 -and $Params.ExcludeIP -notcontains $_."s-ip"}
 
 if (@($ActiveSyncLog).count -gt 0){
-    Write-host "Saving logs"
+    Add-ToLog -Message "Saving logs." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
     $ActiveSyncLog |select-Object * | export-csv -Path $Global:ActiveSyncLogFilePath -Encoding UTF8 -NoTypeInformation
     $UniqueIP = $ActiveSyncLog | Select-Object  @{name="IP";e={$_."c-ip"}} -Unique
     #CollectUniqIP $ActiveSyncLog "c-ip"
@@ -288,6 +289,7 @@ $UserCredential = New-Object -TypeName System.Management.Automation.PSCredential
 $Session        = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri "http://$($Global:ExchangeServerFQDN)/PowerShell/" -Authentication Kerberos -Credential $UserCredential   # -SessionOption (New-PSSessionOption -SkipCNCheck)
 Import-PSSession $Session -AllowClobber
 
+Add-ToLog -Message "Processing message tracking logs." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $Data1    = (get-date).AddHours(-1 * $Global:HoursToLoad)
 $Messages = Get-MessageTrackingLog -Start $Data1 -ResultSize $Global:MaxResultSize
 $Messages | Select-Object * | export-csv -Path $Global:MessageLogFilePath -Encoding UTF8
@@ -295,6 +297,7 @@ $UniqueIP += $Messages | Select-Object  @{name="IP";e={$_.ClientIp}} -Unique
 #CollectUniqIP $Messages "ClientIp"
 $Messages = ""
 
+Add-ToLog -Message "Processing agent logs." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $AgentLogs  = Get-AgentLog -Start $Data1
 $AgentLogs += Get-agentlog  -location $Global:ConnectionFilterLogLocation -StartDate $Data1 #Add connection filter
 $AgentLogs | Select-Object * | export-csv -Path $Global:AgentLogFilePath -Encoding UTF8
@@ -303,6 +306,7 @@ $UniqueIP += $AgentLogs | Select-Object @{name="IP";e={$_.OriginalClientIp}} -Un
 $AgentLogs = ""
 $HashData = @()
 
+Add-ToLog -Message "Processing content filter config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "ContentFilterConfig"
 $Filter     = get-ContentFilterConfig | Select-Object name, enabled, BypassedRecipients, BypassedSenderDomains, BypassedSenders, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;name="";BypassedRecipients="";BypassedSenderDomains="";BypassedSenders=""}}
@@ -310,6 +314,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing recipient filter config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "RecipientFilterConfig"
 $Filter     = Get-RecipientFilterConfig | Select-Object identity, enabled, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;identity=""}}
@@ -317,6 +322,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing ip allow list." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "IPAllowListEntry"
 $Filter     = Get-IPAllowListEntry | Select-Object Iprange, @{name="enabled";e={$true}}, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;Iprange=""}}
@@ -324,6 +330,7 @@ $filter | Format-Table -AutoSize
 $Res = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing ip block list." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "IPBlockListEntry"
 $Filter     = Get-IPBlockListEntry | Select-Object Iprange, @{name="enabled";e={$true}}, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;Iprange=""}}
@@ -331,6 +338,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing sender config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "SenderIdConfig"
 $Filter     = Get-SenderIdConfig | Select-Object SpoofedDomainAction, Enabled, TempErrorAction, @{name="Name1";e={$FilterName}} 
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;spoofeddomainaction="";TempErrorAction=""}}
@@ -338,6 +346,7 @@ $filter | Format-Table -AutoSize
 $Res = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing sender reputation config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "SenderReputation"
 $Filter     = GET-SenderReputationConfig | Select-Object enabled, identity , @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;identity=""}}
@@ -345,6 +354,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO  $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing sender filter config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "SenderFilterConfig"
 $Filter     = get-SenderFilterConfig | Select-Object recipientblockedsenderaction, enabled, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;recipientblockedsenderaction=""}}
@@ -352,6 +362,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing ip block filter providers." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "IPBlockListProvider"
 $Filter     = Get-IPBlockListProvider| Select-Object @{name="IPBlockProvider";e={$_.name}}, @{name="enabled";e={$true}} , @{name="Global";e={"Deny"}}, @{name="Name1";e={ $FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{global="Deny";enabled=$false;Name1=$FilterName;name=""}}
@@ -359,6 +370,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing ip allow list providers." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "IPAllowListProvider"
 $Filter     = Get-IPAllowListProvider| Select-Object @{name="IPAllowProvider";e={$_.name}}, @{name="enabled";e={$true}}, @{name="Global";e={"Allow"}}, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{global="Allow";enabled=$false;Name1=$FilterName;name=""}} 
@@ -366,6 +378,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing content filter bad words." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "ContentFilterPhrasBadWord"
 $Filter     = Get-ContentFilterPhrase |Where-Object{$_.influence -eq "BadWord"}| Select-Object @{name="BadWord";e={$_.phrase}}, @{name="Global";e={"Deny"}}, @{name="Name1";e={ $FilterName}}, @{name="Enabled";e={$true}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{global="Deny";enabled=$false;Name1=$FilterName;phrase=""}}
@@ -373,6 +386,7 @@ $filter | Format-Table -AutoSize
 $Res       = Format-PSO $Filter
 $HashData += $Res
 
+Add-ToLog -Message "Processing content filter good words." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $FilterName = "ContentFilterPhraseGoodWord"
 $Filter     = Get-ContentFilterPhrase |Where-Object{$_.influence -eq "GoodWord"}| Select-Object @{name="GoodWord";e={$_.phrase}}, @{name="Global";e={"Allow"}}, @{name="Name1";e={ $FilterName}}, @{name="Enabled";e={$true}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{global="Allow";enabled=$false;Name1=$FilterName;phrase=""}}

@@ -26,3 +26,4 @@ LOGS/Errors.log
 SETTINGS/Settings.ps1
 ExchangeLogAnalyzer.pbix
 ACL/Access.csv
+LOGS/ExchangeLogAnalyzer.log
