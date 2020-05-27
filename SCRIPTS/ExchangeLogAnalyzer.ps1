@@ -7,20 +7,27 @@
     .PARAMETER
     .EXAMPLE
 #>
-Clear-Host
-$Global:ScriptName = $MyInvocation.MyCommand.Name
+Param (
+    [Parameter( Mandatory = $false, Position = 0, HelpMessage = "Initialize global settings." )]
+    [bool] $InitGlobal = $true,
+    [Parameter( Mandatory = $false, Position = 1, HelpMessage = "Initialize local settings." )]
+    [bool] $InitLocal = $true   
+)
+
+$Global:ScriptInvocation = $MyInvocation
 $InitScript = "C:\DATA\Projects\GlobalSettings\SCRIPTS\Init.ps1"
-if (. "$InitScript" -MyScriptRoot (Split-Path $PSCommandPath -Parent)) { exit 1 }
+. "$InitScript" -MyScriptRoot (Split-Path $PSCommandPath -Parent) -InitGlobal $InitGlobal -InitLocal $InitLocal
+if ($LastExitCode) { exit 1 }
 # Error trap
 trap {
-    if ($Global:Logger) {
-      Get-ErrorReporting $_
+    if (clear-host) {
+        Get-ErrorReporting $_        
         . "$GlobalSettings\$SCRIPTSFolder\Finish.ps1" 
-        . "$GlobalSettings\$SCRIPTSFolder\Finish.ps1"  
     }
     Else {
-        Write-Host "There is error before logging initialized." -ForegroundColor Red
-    }   
+        Write-Host "[$($MyInvocation.MyCommand.path)] There is error before logging initialized. Error: $_" -ForegroundColor Red
+    }  
+    $Global:GlobalSettingsSuccessfullyLoaded = $false
     exit 1
 }
 ################################# Script start here #################################
@@ -150,7 +157,7 @@ function OpenArrays($PSO,$Arraylist) {
 [array]$Global:MessagesLog1  = @()
 [array]$Global:FilterConfig1 = @()
 
-& "$MyScriptRoot\ExchangeLogsExport.ps1"
+& "$MyScriptRoot\ExchangeLogsExport.ps1" -InitGlobal $False -InitLocal $false
 
 $MessagesLog   = Import-Csv $Global:MessageLogFilePath -Encoding UTF8
 $AgentLogs     = Import-Csv $Global:AgentLogFilePath -Encoding UTF8

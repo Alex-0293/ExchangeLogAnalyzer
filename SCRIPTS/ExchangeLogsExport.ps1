@@ -7,23 +7,31 @@
     .PARAMETER
     .EXAMPLE
 #>
-Clear-Host
-$Global:ScriptName = $MyInvocation.MyCommand.Name
+Param (
+    [Parameter( Mandatory = $false, Position = 0, HelpMessage = "Initialize global settings." )]
+    [bool] $InitGlobal = $true,
+    [Parameter( Mandatory = $false, Position = 1, HelpMessage = "Initialize local settings." )]
+    [bool] $InitLocal  = $true   
+)
+
+$Global:ScriptInvocation = $MyInvocation
 $InitScript        = "C:\DATA\Projects\GlobalSettings\SCRIPTS\Init.ps1"
-if (. "$InitScript" -MyScriptRoot (Split-Path $PSCommandPath -Parent)) { exit 1 }
+. "$InitScript" -MyScriptRoot (Split-Path $PSCommandPath -Parent) -InitGlobal $InitGlobal -InitLocal $InitLocal
+if ($LastExitCode) { exit 1 }
 # Error trap
 trap {
-    if ($Global:Logger) {
-       Get-ErrorReporting $_
+    if (get-module -FullyQualifiedName AlexkUtils) {
+        Get-ErrorReporting $_
+        
         . "$GlobalSettings\$SCRIPTSFolder\Finish.ps1"  
     }
     Else {
-        Write-Host "There is error before logging initialized." -ForegroundColor Red
+        Write-Host "[$($MyInvocation.MyCommand.path)] There is error before logging initialized. Error: $_" -ForegroundColor Red
     }   
     exit 1
 }
 ################################# Script start here #################################
-Clear-Host
+#clear-host
 function Format-PSO($Filter) {
      
     $Res = @()
@@ -255,11 +263,20 @@ function Update-CSVReferenceFile {
             }
         }
         if ($Changes) {
-            $CSVFile | Sort-Object "Ip" | Export-Csv -Path $CSVFilePath -Encoding UTF8 -NoTypeInformation
+            # Because many process can write simultaneously.
+            for ($i = 1; $i -le $ScriptOperationTry; $i++) {
+                try {
+                    $CSVFile | Sort-Object "Ip" | Export-Csv -Path $CSVFilePath -Encoding UTF8 -NoTypeInformation
+                    break
+                }
+                Catch {
+                    Start-Sleep -Milliseconds $PauseBetweenRetries 
+                }
+            }
         }  
     }
     else {
-        #Write-Host "Reference CSV file path [$CSVFilePath] not found!" -ForegroundColor Red   
+        Add-ToLog -Message "Reference CSV file path [$CSVFilePath] not found. New file created." -logFilePath $ScriptLogFilePath -display -status "Warning" -level ($ParentLevel + 1)              
         $Array | Sort-Object "Ip" | Export-Csv -Path $CSVFilePath -Encoding UTF8 -NoTypeInformation
     }
 }
@@ -291,22 +308,22 @@ Import-PSSession $Session -AllowClobber
 
 Add-ToLog -Message "Processing message tracking logs." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
 $Data1    = (get-date).AddHours(-1 * $Global:HoursToLoad)
-$Messages = Get-MessageTrackingLog -Start $Data1 -ResultSize $Global:MaxResultSize
+$Messages = Get-MessageTrackingLog -Start $Data1 -ResultSize $Global:MaxResultSize -ErrorAction SilentlyContinue
 $Messages | Select-Object * | export-csv -Path $Global:MessageLogFilePath -Encoding UTF8
 $UniqueIP += $Messages | Select-Object  @{name="IP";e={$_.ClientIp}} -Unique
 #CollectUniqIP $Messages "ClientIp"
 $Messages = ""
 
 Add-ToLog -Message "Processing agent logs." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
-$AgentLogs  = Get-AgentLog -Start $Data1
-$AgentLogs += Get-agentlog  -location $Global:ConnectionFilterLogLocation -StartDate $Data1 #Add connection filter
+$AgentLogs  = Get-AgentLog -Start $Data1 -ErrorAction SilentlyContinue
+$AgentLogs += Get-AgentLog -location $Global:ConnectionFilterLogLocation -StartDate $Data1 -ErrorAction SilentlyContinue #Add connection filter
 $AgentLogs | Select-Object * | export-csv -Path $Global:AgentLogFilePath -Encoding UTF8
 $UniqueIP += $AgentLogs | Select-Object @{name="IP";e={$_.OriginalClientIp}} -Unique
 #CollectUniqIP $AgentLogs "OriginalClientIp"
 $AgentLogs = ""
 $HashData = @()
 
-Add-ToLog -Message "Processing content filter config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1)
+Add-ToLog -Message "Processing content filter config." -logFilePath $ScriptLogFilePath -display -status "Info" -level ($ParentLevel + 1) 
 $FilterName = "ContentFilterConfig"
 $Filter     = get-ContentFilterConfig | Select-Object name, enabled, BypassedRecipients, BypassedSenderDomains, BypassedSenders, @{name="Name1";e={$FilterName}}
 if($null -eq $Filter){$Filter = [PSCustomObject]@{enabled=$false;Name1=$FilterName;name="";BypassedRecipients="";BypassedSenderDomains="";BypassedSenders=""}}
